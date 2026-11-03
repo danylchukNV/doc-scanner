@@ -5,7 +5,8 @@
     streamlit run app.py
 
 Вкладки:
-    Сканування  — фото (завантаження / камера / приклад) -> знайдений контур, результат, усі етапи;
+    Сканування  — фото (завантаження / камера / приклад), поворот / дзеркало ->
+                  знайдений контур, результат, усі етапи;
                   параметри алгоритму змінюються в бічній панелі; ручне коригування кутів.
     Порівняння  — стратегії simple і multi на одному зображенні.
     Датасет     — випадкові приклади з розміченого датасету: еталон (зелений) vs знайдене (червоний), IoU.
@@ -57,6 +58,32 @@ def limit_size(img: np.ndarray, max_side: int = 2000) -> np.ndarray:
     """Дуже великі фото зменшуємо — на якість пошуку не впливає (він працює на 500 px)."""
     s = max_side / max(img.shape[:2])
     return cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else img
+
+
+ROTATIONS = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}
+
+
+def orientation_ui(img: np.ndarray, key: str) -> tuple[np.ndarray, str]:
+    """Кнопки повороту на 90° і дзеркального відображення. Стан — окремо для кожного фото."""
+    rk, fk = f"rot_{key}", f"flip_{key}"
+    st.session_state.setdefault(rk, 0)
+    st.session_state.setdefault(fk, False)
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 3])
+    if c1.button("↺ 90°", key=f"l_{key}", help="Повернути проти годинникової стрілки"):
+        st.session_state[rk] = (st.session_state[rk] - 1) % 4
+    if c2.button("↻ 90°", key=f"r_{key}", help="Повернути за годинниковою стрілкою"):
+        st.session_state[rk] = (st.session_state[rk] + 1) % 4
+    if c3.button("⇋ Дзеркало", key=f"f_{key}", help="Відобразити по горизонталі"):
+        st.session_state[fk] = not st.session_state[fk]
+    if c4.button("Скинути", key=f"z_{key}"):
+        st.session_state[rk], st.session_state[fk] = 0, False
+    k, flip = st.session_state[rk], st.session_state[fk]
+    if flip:
+        img = cv2.flip(img, 1)
+    if k:
+        img = cv2.rotate(img, ROTATIONS[k])
+    c5.caption(f"Поворот: {k * 90}°{' · дзеркально' if flip else ''}")
+    return img, f"{k}{int(flip)}"
 
 
 def example_files() -> list[Path]:
@@ -174,7 +201,8 @@ def tab_scan(cfg: ScanConfig) -> None:
     if img is None:
         return
     img = limit_size(img)
-    key = f"{name}_{img.shape}"
+    img, orient = orientation_ui(img, f"scan_{name}_{img.shape}")
+    key = f"{name}_{img.shape}_{orient}"
 
     t0 = time.perf_counter()
     res = scan(img, cfg)
@@ -219,6 +247,7 @@ def tab_compare(cfg: ScanConfig) -> None:
     if img is None:
         return
     img = limit_size(img)
+    img, _ = orientation_ui(img, f"cmp_{name}_{img.shape}")
     cols = st.columns(2)
     for col, strategy in zip(cols, ("simple", "multi")):
         c = replace(cfg, strategy=strategy)
