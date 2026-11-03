@@ -21,6 +21,8 @@
 | `src/scanner.py` | алгоритм: обробка, пошук контуру, гомографія, підсилення |
 | `src/main.py` | CLI, режим debug, збереження |
 | `src/check_env.py` | перевірка залежностей і тестових даних |
+| `src/make_synthetic.py` | генерація синтетичних тестів з відомими кутами |
+| `src/evaluate.py` | вимірювання похибки кутів на синтетичних тестах |
 
 Детальний аналіз і обґрунтування вибору методів — [docs/01_analysis.md](docs/01_analysis.md).
 
@@ -37,7 +39,33 @@ pip install -r requirements.txt
 python src/check_env.py
 ```
 
-_Команди запуску сканера — після етапу 2._
+### Запуск сканера
+
+```bash
+# одне фото -> output/<назва>_scan.png
+python src/main.py samples/01_a4_dark_top.jpg
+
+# кольоровий режим (CLAHE) і показ усіх етапів у вікні
+python src/main.py samples/02_a4_dark_angle.jpg --mode color --show
+
+# ручний вибір 4 кутів мишкою (коли автоматичний пошук не впорався)
+python src/main.py samples/09_white_on_white.jpg --manual
+
+# пакетна обробка папки + зображення етапів у output/debug + output/report.csv
+python src/main.py samples/ --debug
+
+# зміна параметрів алгоритму
+python src/main.py samples/07_shadow.jpg --canny 30 90 --block 31 --C 15
+```
+
+Усі параметри: `python src/main.py -h`.
+
+### Синтетичні тести
+
+```bash
+python src/make_synthetic.py   # створює samples/synthetic/ + ground_truth.json
+python src/evaluate.py         # похибка знайдених кутів у пікселях
+```
 
 ## Тестування
 
