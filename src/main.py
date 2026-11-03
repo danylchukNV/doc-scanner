@@ -34,13 +34,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--show", action="store_true", help="показати етапи у вікні")
     p.add_argument("--manual", action="store_true", help="вибрати 4 кути мишкою")
     g = p.add_argument_group("параметри алгоритму")
+    g.add_argument("--strategy", choices=["multi", "simple"], default="multi",
+                   help="multi — кілька карт країв і вибір кращого (за замовч.), simple — одна карта")
     g.add_argument("--canny", nargs=2, type=int, metavar=("LOW", "HIGH"),
                    help="ручні пороги Canny (за замовчуванням — автопоріг)")
     g.add_argument("--sigma", type=float, default=0.33, help="σ автопорогу Canny")
     g.add_argument("--blur", type=int, default=5, help="ядро розмиття Гауса")
     g.add_argument("--morph", type=int, default=5, help="ядро морфологічного закриття, 0 — вимк.")
     g.add_argument("--eps", type=float, default=0.02, help="epsilon approxPolyDP (частка периметра)")
-    g.add_argument("--min-area", type=float, default=0.10, help="мін. частка площі кадру")
+    g.add_argument("--min-area", type=float, default=0.05, help="мін. частка площі кадру")
     g.add_argument("--block", type=int, default=21, help="blockSize adaptiveThreshold")
     g.add_argument("--C", type=int, default=10, help="константа C adaptiveThreshold")
     return p.parse_args()
@@ -56,6 +58,7 @@ def build_config(a: argparse.Namespace) -> ScanConfig:
         approx_eps=a.eps,
         min_area_ratio=a.min_area,
         mode=a.mode,
+        strategy=a.strategy,
         block_size=a.block,
         thresh_c=a.C,
     )

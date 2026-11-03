@@ -66,12 +66,13 @@ def parse_args() -> argparse.Namespace:
                    help="зберегти картинки найгірших випадків (зелений — еталон, червоний — знайдене)")
     p.add_argument("-o", "--out", default=None, help="CSV-звіт (за замовч. output/eval_<папка>.csv)")
     # параметри алгоритму — ті самі, що в main.py, щоб порівнювати налаштування
+    p.add_argument("--strategy", choices=["multi", "simple"], default="multi")
     p.add_argument("--canny", nargs=2, type=int, metavar=("LOW", "HIGH"))
     p.add_argument("--sigma", type=float, default=0.33)
     p.add_argument("--blur", type=int, default=5)
     p.add_argument("--morph", type=int, default=5)
     p.add_argument("--eps", type=float, default=0.02)
-    p.add_argument("--min-area", type=float, default=0.10)
+    p.add_argument("--min-area", type=float, default=0.05)
     return p.parse_args()
 
 
@@ -83,7 +84,8 @@ def main() -> int:
         return 2
     cfg = ScanConfig(blur_ksize=a.blur, canny_low=a.canny[0] if a.canny else None,
                      canny_high=a.canny[1] if a.canny else None, canny_sigma=a.sigma,
-                     morph_ksize=a.morph, approx_eps=a.eps, min_area_ratio=a.min_area)
+                     morph_ksize=a.morph, approx_eps=a.eps, min_area_ratio=a.min_area,
+                     strategy=a.strategy)
 
     fmt, samples = load_dataset(folder, a.format, a.frame_step)
     total = len(samples)
@@ -137,6 +139,7 @@ def main() -> int:
         print(f"  середній IoU:          {ious.mean():.3f}  (медіана {np.median(ious):.3f})")
         if len(errs):
             print(f"  похибка кутів:         {errs.mean():.2f}% діагоналі (медіана {np.median(errs):.2f}%)")
+        print(f"  успіх (IoU ≥ 0.8):     {sum(r['iou'] >= 0.8 for r in pos) / len(pos):.1%}")
         methods: dict[str, int] = {}
         for r in pos:
             methods[r["method"]] = methods.get(r["method"], 0) + 1

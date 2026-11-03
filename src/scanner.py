@@ -2,10 +2,16 @@
 
 Конвеєр:
     1. preprocess            — зменшення, grayscale, розмиття Гауса
-    2. detect_edges          — детектор Canny + морфологічне закриття
-    3. find_document_corners — контури -> approxPolyDP -> 4 кути
+    2. пошук країв           — Canny (+ морфологічне закриття)
+    3. пошук 4 кутів         — контури -> approxPolyDP -> чотирикутник
     4. four_point_transform  — гомографія (корекція перспективи)
     5. enhance               — адаптивна бінаризація / CLAHE
+
+Дві стратегії пошуку кутів (ScanConfig.strategy):
+    simple — одна карта країв (Canny на grayscale з автопорогом), найбільший 4-кутник;
+    multi  — кілька карт країв (grayscale, кожен канал BGR, різні пороги, Otsu),
+             з усіх знайдених 4-кутників вибирається найкращий за оцінкою
+             «контраст з фоном × опора на краї × площа^0.25». За замовчуванням.
 """
 from __future__ import annotations
 
@@ -28,7 +34,8 @@ class ScanConfig:
     canny_sigma: float = 0.33       # ширина діапазону автопорогу
     morph_ksize: int = 5            # ядро морфологічного закриття (0 = вимкнено)
     approx_eps: float = 0.02        # epsilon approxPolyDP як частка периметра
-    min_area_ratio: float = 0.10    # мінімальна площа документа від площі кадру
+    min_area_ratio: float = 0.05    # мінімальна площа документа від площі кадру
+    strategy: str = "multi"         # multi | simple
     mode: str = "bw"                # bw | color | none
     block_size: int = 21            # вікно adaptiveThreshold (непарне)
     thresh_c: int = 10              # константа, що віднімається від локального середнього
@@ -38,7 +45,7 @@ class ScanConfig:
 @dataclass
 class ScanResult:
     ok: bool
-    method: str                                  # contour | approx_relaxed | min_area_rect | manual | none
+    method: str                                  # simple: contour | approx_relaxed | min_area_rect; multi:<карта>; manual; none
     corners: np.ndarray | None                   # 4x2 у координатах ОРИГІНАЛУ (TL, TR, BR, BL)
     warped: np.ndarray | None                    # вирівняне кольорове зображення
     output: np.ndarray | None                    # після підсилення
@@ -163,6 +170,102 @@ def find_document_corners(edges: np.ndarray, cfg: ScanConfig) -> tuple[np.ndarra
 
 
 # --------------------------------------------------------------------------- #
+# 3б. Стратегія multi: кілька карт країв + вибір найкращого кандидата
+# --------------------------------------------------------------------------- #
+def _kernel(k: int) -> np.ndarray:
+    return cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
+
+
+def edge_maps(small: np.ndarray, cfg: ScanConfig) -> dict[str, np.ndarray]:
+    """Набір карт країв, кожна «бачить» межу аркуша в інших умовах.
+
+    gray_auto  — Canny на яскравості з автопорогом (класичний варіант)
+    gray_low   — Canny з низькими порогами: слабкий контраст (білий аркуш на світлому столі)
+    bgr_high / bgr_low — Canny окремо на каналах B, G, R, об'єднання: межа, яка помітна
+                 лише за кольором (білий папір на помаранчевому столі)
+    otsu_*     — межі областей після бінаризації Otsu яскравості (gray) та насиченості (sat),
+                 в обох полярностях: суцільний аркуш як «пляма»
+    """
+    k = cfg.blur_ksize | 1
+    gray = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), (k, k), 0)
+    maps: dict[str, np.ndarray] = {}
+    lo, hi = auto_canny_thresholds(gray, cfg.canny_sigma)
+    maps["gray_auto"] = cv2.Canny(gray, lo, hi)
+    maps["gray_low"] = cv2.Canny(gray, 10, 40)
+    channels = [cv2.GaussianBlur(c, (k, k), 0) for c in cv2.split(small)]
+    for name, (lo, hi) in (("bgr_high", (40, 120)), ("bgr_low", (20, 60))):
+        e = np.zeros_like(gray)
+        for c in channels:
+            e |= cv2.Canny(c, lo, hi)
+        maps[name] = e
+    sat = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2HSV)[:, :, 1], (7, 7), 0)
+    gray7 = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), (7, 7), 0)
+    for name, c in (("gray", gray7), ("sat", sat)):
+        _, b = cv2.threshold(c, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        for suffix, bb in (("", b), ("_inv", 255 - b)):
+            bb = cv2.morphologyEx(bb, cv2.MORPH_OPEN, _kernel(7))  # прибрати дрібні плями
+            maps[f"otsu_{name}{suffix}"] = cv2.Canny(bb, 50, 150)
+    return maps
+
+
+def find_quads(edges: np.ndarray, cfg: ScanConfig, max_contours: int = 15) -> list[np.ndarray]:
+    """Усі опуклі 4-кутники серед найбільших контурів карти країв."""
+    if cfg.morph_ksize > 0:
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, _kernel(cfg.morph_ksize))
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = cfg.min_area_ratio * edges.shape[0] * edges.shape[1]
+    quads = []
+    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:max_contours]:
+        if cv2.contourArea(c) < min_area:
+            break
+        for cand in (c, cv2.convexHull(c)):
+            approx = cv2.approxPolyDP(cand, cfg.approx_eps * cv2.arcLength(cand, True), True)
+            if len(approx) == 4 and cv2.isContourConvex(approx) \
+                    and cv2.contourArea(approx) >= min_area:
+                quads.append(approx.reshape(4, 2).astype(np.float32))
+                break
+    return quads
+
+
+def score_quad(small: np.ndarray, lab: np.ndarray, quad: np.ndarray, edges: np.ndarray) -> float:
+    """Оцінка кандидата = контраст × опора на краї × площа^0.25.
+
+    контраст  — відстань між середнім кольором (Lab) усередині та у смузі навколо;
+    опора     — частка периметра 4-кутника, що лежить на знайдених краях;
+    площа     — частка кадру (у степені 0.25 — слабка перевага більших кандидатів).
+    """
+    h, w = small.shape[:2]
+    inside = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(inside, quad.astype(np.int32), 255)
+    ring = cv2.dilate(inside, _kernel(15)) - inside
+    if not inside.any() or not ring.any():
+        return 0.0
+    contrast = float(np.linalg.norm(lab[inside > 0].mean(0) - lab[ring > 0].mean(0)))
+    border = np.zeros((h, w), np.uint8)
+    cv2.polylines(border, [quad.astype(np.int32)], True, 255, 3)
+    support = float((cv2.dilate(edges, _kernel(3))[border > 0] > 0).mean())
+    area = cv2.contourArea(quad) / (h * w)
+    return contrast * support * area ** 0.25
+
+
+def find_document_multi(small: np.ndarray, cfg: ScanConfig
+                        ) -> tuple[np.ndarray | None, str, list[np.ndarray], np.ndarray | None]:
+    """Повертає (кути, метод, усі кандидати, карта країв переможця)."""
+    lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
+    best, best_score, best_name, best_edges = None, -1.0, "none", None
+    all_quads: list[np.ndarray] = []
+    for name, edges in edge_maps(small, cfg).items():
+        for q in find_quads(edges, cfg):
+            all_quads.append(q)
+            sc = score_quad(small, lab, q, edges)
+            if sc > best_score:
+                best, best_score, best_name, best_edges = q, sc, name, edges
+    if best is None:
+        return None, "none", all_quads, None
+    return order_points(best), f"multi:{best_name}", all_quads, best_edges
+
+
+# --------------------------------------------------------------------------- #
 # 4. Корекція перспективи
 # --------------------------------------------------------------------------- #
 def four_point_transform(img: np.ndarray, corners: np.ndarray) -> np.ndarray:
@@ -211,9 +314,12 @@ def draw_corners(img: np.ndarray, corners: np.ndarray, color=(0, 255, 0)) -> np.
 def detect_corners(img: np.ndarray, cfg: ScanConfig | None = None) -> tuple[np.ndarray | None, str]:
     """Лише пошук кутів (етапи 1–3), без корекції перспективи. Використовується для оцінки."""
     cfg = cfg or ScanConfig()
-    _, blurred, ratio = preprocess(img, cfg)
-    edges, _ = detect_edges(blurred, cfg)
-    small_corners, method = find_document_corners(edges, cfg)
+    small, blurred, ratio = preprocess(img, cfg)
+    if cfg.strategy == "multi":
+        small_corners, method, _, _ = find_document_multi(small, cfg)
+    else:
+        edges, _ = detect_edges(blurred, cfg)
+        small_corners, method = find_document_corners(edges, cfg)
     return (None if small_corners is None else small_corners * ratio), method
 
 
@@ -231,7 +337,16 @@ def scan(img: np.ndarray, cfg: ScanConfig | None = None,
     if manual_corners is not None:
         corners, method = order_points(manual_corners), "manual"
     else:
-        small_corners, method = find_document_corners(edges, cfg)
+        if cfg.strategy == "multi":
+            small_corners, method, cands, win_edges = find_document_multi(small, cfg)
+            if win_edges is not None:
+                stages["3_edges"] = win_edges  # карта країв, що дала переможця
+            vis = small.copy()
+            for q in cands:  # усі кандидати — блакитним
+                cv2.polylines(vis, [q.astype(np.int32)], True, (255, 200, 0), 2)
+            stages["3b_candidates"] = vis
+        else:
+            small_corners, method = find_document_corners(edges, cfg)
         if small_corners is None:
             return ScanResult(False, "none", None, None, None, stages,
                               f"Документ не знайдено (Canny {lo}/{hi}). "
@@ -239,13 +354,14 @@ def scan(img: np.ndarray, cfg: ScanConfig | None = None,
         corners = small_corners * ratio
 
     stages["4_contour"] = draw_corners(img, corners,
-                                       (0, 255, 0) if method in ("contour", "manual") else (0, 165, 255))
+                                       (0, 255, 0) if method in ("contour", "manual") or method.startswith("multi")
+                                       else (0, 165, 255))
     warped = four_point_transform(img, corners)
     stages["5_warped"] = warped
     output = enhance(warped, cfg)
     stages["6_output"] = output
-    return ScanResult(True, method, corners, warped, output, stages,
-                      f"OK ({method}, Canny {lo}/{hi})")
+    info = f"Canny {lo}/{hi}" if cfg.strategy == "simple" else "multi"
+    return ScanResult(True, method, corners, warped, output, stages, f"OK ({method}, {info})")
 
 
 def make_debug_montage(stages: dict[str, np.ndarray], tile_h: int = 360) -> np.ndarray:

@@ -62,12 +62,13 @@ python src/main.py -h
 
 | Прапорець | За замовч. | Що змінює |
 |-----------|-----------|-----------|
-| `--canny LOW HIGH` | авто | ручні пороги Canny |
+| `--strategy` | multi | `multi` — кілька карт країв і вибір кращого кандидата, `simple` — одна карта (Canny на grayscale) |
+| `--canny LOW HIGH` | авто | ручні пороги Canny (стратегія simple) |
 | `--sigma` | 0.33 | ширина автопорогу Canny |
 | `--blur` | 5 | ядро розмиття Гауса |
 | `--morph` | 5 | ядро морфологічного закриття (0 — вимкнути) |
 | `--eps` | 0.02 | точність апроксимації контуру (частка периметра) |
-| `--min-area` | 0.10 | мінімальна частка площі кадру для документа |
+| `--min-area` | 0.05 | мінімальна частка площі кадру для документа |
 | `--block` | 21 | розмір вікна adaptiveThreshold |
 | `--C` | 10 | константа adaptiveThreshold |
 
@@ -117,6 +118,10 @@ python src/evaluate.py docs/datasets/SmartDoc/testDataset --frame-step 50 --limi
 # показати 15 найгірших і зберегти їх картинки в output/eval_worst
 #   (зелений — еталон, червоний — знайдене сканером)
 python src/evaluate.py "docs/datasets/All My Dataset" --limit 200 --worst 15 --save-worst
+
+# порівняти стратегії: simple (одна карта країв) vs multi (за замовч.)
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --limit 300 --strategy simple
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --limit 300 --strategy multi
 
 # порівняти параметри алгоритму
 python src/evaluate.py docs/datasets/SmartDoc/testDataset --limit 300 --sigma 0.5
