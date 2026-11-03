@@ -3,3 +3,6 @@ numpy>=1.24
 
 # для src/extract_parquet.py (DocCornerDataset)
 pyarrow>=14
+
+# веб-демонстрація (app.py)
+streamlit>=1.30
