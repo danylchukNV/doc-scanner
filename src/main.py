@@ -45,11 +45,14 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--min-area", type=float, default=0.05, help="мін. частка площі кадру")
     g.add_argument("--block", type=int, default=21, help="blockSize adaptiveThreshold")
     g.add_argument("--C", type=int, default=10, help="константа C adaptiveThreshold")
+    g.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                   help="будь-який параметр ScanConfig, напр. --set use_lines=false min_angle=40")
     return p.parse_args()
 
 
 def build_config(a: argparse.Namespace) -> ScanConfig:
-    return ScanConfig(
+    from evaluate import apply_overrides
+    return apply_overrides(ScanConfig(
         blur_ksize=a.blur,
         canny_low=a.canny[0] if a.canny else None,
         canny_high=a.canny[1] if a.canny else None,
@@ -61,7 +64,7 @@ def build_config(a: argparse.Namespace) -> ScanConfig:
         strategy=a.strategy,
         block_size=a.block,
         thresh_c=a.C,
-    )
+    ), a.set)
 
 
 def select_corners_manually(img: np.ndarray) -> np.ndarray | None:

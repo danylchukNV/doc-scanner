@@ -1,0 +1,228 @@
+{
+  "iou_threshold": 0.9,
+  "tune_sizes": {
+    "All My Dataset": 338,
+    "testDataset": 224
+  },
+  "current": {
+    "params": {
+      "approx_eps": 0.02,
+      "min_angle": 50.0,
+      "side_support_min": 0.0,
+      "line_side_min": 0.7,
+      "line_weight": 0.5,
+      "line_inside_thr": 0.9,
+      "score_area_pow": 0.5,
+      "refine": false
+    },
+    "success": {
+      "All My Dataset": 0.4467455621301775,
+      "testDataset": 0.8705357142857143
+    }
+  },
+  "best": {
+    "params": {
+      "approx_eps": 0.02,
+      "min_angle": 50.0,
+      "side_support_min": 0.0,
+      "line_side_min": 0.7,
+      "line_weight": 0.5,
+      "line_inside_thr": 1.01,
+      "score_area_pow": 0.5,
+      "refine": false
+    },
+    "success": {
+      "All My Dataset": 0.47928994082840237,
+      "testDataset": 0.8660714285714286
+    }
+  },
+  "top10": [
+    {
+      "mean": 0.6726806846999155,
+      "success": {
+        "All My Dataset": 0.47928994082840237,
+        "testDataset": 0.8660714285714286
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 50.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6712013947590871,
+      "success": {
+        "All My Dataset": 0.47633136094674555,
+        "testDataset": 0.8660714285714286
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 30.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6712013947590871,
+      "success": {
+        "All My Dataset": 0.47633136094674555,
+        "testDataset": 0.8660714285714286
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 40.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6704485418427726,
+      "success": {
+        "All My Dataset": 0.47928994082840237,
+        "testDataset": 0.8616071428571429
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 50.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": true
+      }
+    },
+    {
+      "mean": 0.6689692519019442,
+      "success": {
+        "All My Dataset": 0.47633136094674555,
+        "testDataset": 0.8616071428571429
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 30.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": true
+      }
+    },
+    {
+      "mean": 0.6689692519019442,
+      "success": {
+        "All My Dataset": 0.47633136094674555,
+        "testDataset": 0.8616071428571429
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 40.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": true
+      }
+    },
+    {
+      "mean": 0.6674635460693152,
+      "success": {
+        "All My Dataset": 0.4822485207100592,
+        "testDataset": 0.8526785714285714
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 50.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.25,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6667635249366018,
+      "success": {
+        "All My Dataset": 0.46745562130177515,
+        "testDataset": 0.8660714285714286
+      },
+      "params": {
+        "approx_eps": 0.03,
+        "min_angle": 50.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.5,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6659842561284869,
+      "success": {
+        "All My Dataset": 0.47928994082840237,
+        "testDataset": 0.8526785714285714
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 30.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.25,
+        "refine": false
+      }
+    },
+    {
+      "mean": 0.6659842561284869,
+      "success": {
+        "All My Dataset": 0.47928994082840237,
+        "testDataset": 0.8526785714285714
+      },
+      "params": {
+        "approx_eps": 0.02,
+        "min_angle": 40.0,
+        "side_support_min": 0.0,
+        "line_side_min": 0.7,
+        "line_weight": 0.5,
+        "line_inside_thr": 1.01,
+        "score_area_pow": 0.25,
+        "refine": false
+      }
+    }
+  ],
+  "chosen": {
+    "params": {
+      "approx_eps": 0.02,
+      "min_angle": 50.0,
+      "side_support_min": 0.0,
+      "line_side_min": 0.7,
+      "line_weight": 0.5,
+      "line_inside_thr": 0.9,
+      "score_area_pow": 0.5,
+      "refine": false
+    },
+    "note": "Найкраща на tune комбінація має line_inside_thr=1.01 (правило вимкнене), але на test вона дала SmartDoc 72.4% проти 86.8% з правилом (0.9) — тобто була перенавчена. Тому обрано line_inside_thr=0.9 (на tune 66.1%, лише на 1.2% нижче максимуму).",
+    "test_success": {
+      "All My Dataset": 0.427,
+      "testDataset": 0.868
+    }
+  }
+}

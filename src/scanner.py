@@ -9,13 +9,21 @@
 
 Дві стратегії пошуку кутів (ScanConfig.strategy):
     simple — одна карта країв (Canny на grayscale з автопорогом), найбільший 4-кутник;
-    multi  — кілька карт країв (grayscale, кожен канал BGR, різні пороги, Otsu),
-             з усіх знайдених 4-кутників вибирається найкращий за оцінкою
-             «контраст з фоном × опора на краї × площа^0.25». За замовчуванням.
+    multi  — (за замовчуванням)
+             1) кандидати-контури з кількох карт країв (grayscale, кожен канал BGR,
+                різні пороги, Otsu);
+             2) кандидати з прямих ліній (LSD): 4-кутник з перетинів двох пар прямих —
+                стійкий до перекриття частини сторони рукою чи предметом;
+             3) фільтр правдоподібності (кути, площа, положення кутів);
+             4) вибір найкращого за оцінкою «контраст × опора на краї × площа^p»
+                (кандидати з прямих — з вагою line_weight; якщо переможець з прямих лежить
+                усередині найкращого контура — обирається контур);
+             5) (опційно, refine) уточнення сторін: пряма через точки країв уздовж кожної
+                сторони (fitLine), кути — перетини сусідніх прямих.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cv2
@@ -36,6 +44,19 @@ class ScanConfig:
     approx_eps: float = 0.02        # epsilon approxPolyDP як частка периметра
     min_area_ratio: float = 0.05    # мінімальна площа документа від площі кадру
     strategy: str = "multi"         # multi | simple
+    # --- стратегія multi (значення підібрані src/tune.py на частині tune, див. docs/tuning_results.json) ---
+    use_lines: bool = True          # додаткові кандидати з прямих ліній (LSD)
+    filter_quads: bool = True       # відкидати неправдоподібні 4-кутники
+    min_angle: float = 50.0         # мін. внутрішній кут 4-кутника, градуси (макс = 180 - min)
+    refine: bool = False            # уточнення сторін за точками країв (fitLine); на tune не дало приросту
+    score_area_pow: float = 0.5     # вага площі в оцінці кандидата
+    score_support_pow: float = 1.0  # вага опори на краї
+    side_support_min: float = 0.0   # кожна сторона кандидата-контуру має лежати на краях хоча б на цю частку
+    line_side_min: float = 0.7      # те саме для кандидатів з прямих (суворіше: прямі легко «склеїти» з чужих)
+    line_weight: float = 0.5        # множник оцінки кандидатів з прямих
+    line_per_group: int = 6         # скільки найдовших прямих кожного напрямку перебирати
+    line_inside_thr: float = 0.9    # якщо 4-кутник з прямих на цю частку лежить усередині кращого
+                                    # контура — обирається контур (прямі всередині = колонки, рамки)
     mode: str = "bw"                # bw | color | none
     block_size: int = 21            # вікно adaptiveThreshold (непарне)
     thresh_c: int = 10              # константа, що віднімається від локального середнього
@@ -227,42 +248,286 @@ def find_quads(edges: np.ndarray, cfg: ScanConfig, max_contours: int = 15) -> li
     return quads
 
 
-def score_quad(small: np.ndarray, lab: np.ndarray, quad: np.ndarray, edges: np.ndarray) -> float:
-    """Оцінка кандидата = контраст × опора на краї × площа^0.25.
+def quad_angles(q: np.ndarray) -> np.ndarray:
+    """Внутрішні кути 4-кутника в градусах."""
+    out = []
+    for i in range(4):
+        v1, v2 = q[i - 1] - q[i], q[(i + 1) % 4] - q[i]
+        c = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-9))
+        out.append(np.degrees(np.arccos(np.clip(c, -1, 1))))
+    return np.array(out)
 
-    контраст  — відстань між середнім кольором (Lab) усередині та у смузі навколо;
-    опора     — частка периметра 4-кутника, що лежить на знайдених краях;
-    площа     — частка кадру (у степені 0.25 — слабка перевага більших кандидатів).
+
+def is_plausible(q: np.ndarray, shape, cfg: ScanConfig) -> bool:
+    """Чи схожий 4-кутник на сфотографований аркуш.
+
+    - кути в межах [min_angle, 180 - min_angle] (сильна перспектива дає ~50–130°);
+    - площа від min_area до 95 % кадру (весь кадр — зазвичай рамка, а не документ);
+    - кути не далі ніж 10 % розміру кадру за його межами.
+    """
+    h, w = shape[:2]
+    q = order_points(q)
+    a = quad_angles(q)
+    if a.min() < cfg.min_angle or a.max() > 180 - cfg.min_angle:
+        return False
+    area = cv2.contourArea(q) / (h * w)
+    if not (cfg.min_area_ratio <= area <= 0.95):
+        return False
+    m = 0.1 * max(h, w)
+    return bool((q[:, 0] > -m).all() and (q[:, 0] < w + m).all()
+                and (q[:, 1] > -m).all() and (q[:, 1] < h + m).all())
+
+
+def side_supports(q: np.ndarray, dil_edges: np.ndarray, n: int = 40) -> np.ndarray:
+    """Частка точок кожної сторони, що лежать на (розширених) краях. Точки поза кадром — не враховуються."""
+    h, w = dil_edges.shape[:2]
+    t = np.linspace(0.05, 0.95, n)[:, None]
+    out = []
+    for k in range(4):
+        pp = q[k] + (q[(k + 1) % 4] - q[k]) * t
+        inside = (pp[:, 0] >= 0) & (pp[:, 0] < w) & (pp[:, 1] >= 0) & (pp[:, 1] < h)
+        if inside.sum() < n * 0.2:   # сторона майже вся поза кадром — не можемо перевірити
+            out.append(1.0)
+            continue
+        xi, yi = pp[inside, 0].astype(int), pp[inside, 1].astype(int)
+        out.append(float(dil_edges[yi, xi].mean()))
+    return np.array(out)
+
+
+def quad_features(small: np.ndarray, lab: np.ndarray, quad: np.ndarray,
+                  edges: np.ndarray) -> tuple[float, np.ndarray, float]:
+    """Ознаки кандидата: (контраст, опора кожної сторони [4], частка площі кадру).
+
+    контраст — відстань між середнім кольором (Lab) усередині 4-кутника та у смузі 15 px навколо;
+    опора    — частка точок кожної сторони, що лежать на знайдених краях.
     """
     h, w = small.shape[:2]
     inside = np.zeros((h, w), np.uint8)
     cv2.fillConvexPoly(inside, quad.astype(np.int32), 255)
     ring = cv2.dilate(inside, _kernel(15)) - inside
     if not inside.any() or not ring.any():
-        return 0.0
+        return 0.0, np.zeros(4), 0.0
     contrast = float(np.linalg.norm(lab[inside > 0].mean(0) - lab[ring > 0].mean(0)))
-    border = np.zeros((h, w), np.uint8)
-    cv2.polylines(border, [quad.astype(np.int32)], True, 255, 3)
-    support = float((cv2.dilate(edges, _kernel(3))[border > 0] > 0).mean())
-    area = cv2.contourArea(quad) / (h * w)
-    return contrast * support * area ** 0.25
+    sides = side_supports(quad, cv2.dilate(edges, _kernel(3)) > 0)
+    return contrast, sides, cv2.contourArea(quad) / (h * w)
+
+
+def score_from_features(contrast: float, sides: np.ndarray, area: float, from_lines: bool,
+                        cfg: ScanConfig) -> float:
+    """Оцінка = контраст × (середня опора)^b × площа^p  (× line_weight для кандидатів з прямих).
+
+    Кандидат відкидається (оцінка 0), якщо хоча б одна сторона має опору менше порогу:
+    така сторона не лежить на реальній межі.
+    """
+    side_min = cfg.line_side_min if from_lines else cfg.side_support_min
+    if sides.min() < side_min:
+        return 0.0
+    sc = contrast * float(sides.mean()) ** cfg.score_support_pow * area ** cfg.score_area_pow
+    return sc * cfg.line_weight if from_lines else sc
+
+
+def score_quad(small: np.ndarray, lab: np.ndarray, quad: np.ndarray, edges: np.ndarray,
+               cfg: ScanConfig | None = None, from_lines: bool = False) -> float:
+    cfg = cfg or ScanConfig()
+    return score_from_features(*quad_features(small, lab, quad, edges), from_lines, cfg)
+
+
+# --------------------------------------------------------------------------- #
+# Кандидати з прямих ліній (LSD)
+# --------------------------------------------------------------------------- #
+def _line_through(seg: np.ndarray) -> np.ndarray:
+    """Пряма через відрізок у однорідних координатах (a, b, c): ax + by + c = 0."""
+    return np.cross([seg[0], seg[1], 1.0], [seg[2], seg[3], 1.0])
+
+
+def _intersect(l1: np.ndarray, l2: np.ndarray) -> np.ndarray | None:
+    p = np.cross(l1, l2)
+    if abs(p[2]) < 1e-9:
+        return None  # паралельні
+    return p[:2] / p[2]
+
+
+def detect_segments(small: np.ndarray, cfg: ScanConfig, max_lines: int = 40) -> np.ndarray:
+    """Відрізки LSD на яскравості та кожному каналі BGR, без майже-дублікатів."""
+    h, w = small.shape[:2]
+    lsd = cv2.createLineSegmentDetector()
+    k = cfg.blur_ksize | 1
+    segs = []
+    for ch in [cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), *cv2.split(small)]:
+        found = lsd.detect(cv2.GaussianBlur(ch, (k, k), 0))[0]
+        if found is not None:
+            segs.append(found.reshape(-1, 4))
+    if not segs:
+        return np.empty((0, 4), np.float32)
+    segs = np.vstack(segs)
+    length = np.hypot(segs[:, 2] - segs[:, 0], segs[:, 3] - segs[:, 1])
+    keep = length >= 0.08 * min(h, w)
+    segs, length = segs[keep], length[keep]
+    out: list[np.ndarray] = []
+    for i in np.argsort(-length):  # від найдовших; дублікати (той самий край на різних каналах) — геть
+        s = segs[i]
+        ang = np.degrees(np.arctan2(s[3] - s[1], s[2] - s[0])) % 180
+        mid = (s[:2] + s[2:]) / 2
+        dup = False
+        for t in out:
+            ta = np.degrees(np.arctan2(t[3] - t[1], t[2] - t[0])) % 180
+            d_ang = min(abs(ang - ta), 180 - abs(ang - ta))
+            line = _line_through(t)
+            dist = abs(line[0] * mid[0] + line[1] * mid[1] + line[2]) / np.hypot(line[0], line[1])
+            if d_ang < 4 and dist < 6:
+                dup = True
+                break
+        if not dup:
+            out.append(s)
+        if len(out) >= max_lines:
+            break
+    return np.array(out, np.float32).reshape(-1, 4)
+
+
+def line_quads(small: np.ndarray, cfg: ScanConfig, support_edges: np.ndarray,
+               keep: int = 10) -> list[np.ndarray]:
+    """4-кутники з перетинів двох пар прямих.
+
+    Відрізки ділимо на дві групи за напрямком (k-means на подвоєному куті — так 0° і 180°
+    вважаються одним напрямком), з кожної групи беремо пару прямих, кути — їхні перетини.
+    Перший відбір — швидка оцінка опори на краї (вибірка точок уздовж периметра).
+    """
+    segs = detect_segments(small, cfg)
+    if len(segs) < 4:
+        return []
+    h, w = small.shape[:2]
+    ang = np.arctan2(segs[:, 3] - segs[:, 1], segs[:, 2] - segs[:, 0])
+    feats = np.stack([np.cos(2 * ang), np.sin(2 * ang)], 1).astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1e-3)
+    _, labels, _ = cv2.kmeans(feats, 2, None, crit, 3, cv2.KMEANS_PP_CENTERS)
+    labels = labels.ravel()
+    length = np.hypot(segs[:, 2] - segs[:, 0], segs[:, 3] - segs[:, 1])
+    groups = []
+    for g in (0, 1):
+        idx = np.where(labels == g)[0]
+        groups.append(idx[np.argsort(-length[idx])][:cfg.line_per_group])
+    if min(len(g) for g in groups) < 2:
+        return []
+
+    lines = [_line_through(sg) for sg in segs]
+    dil = cv2.dilate(support_edges, _kernel(3)) > 0
+    min_sep = 0.1 * min(h, w)
+    scored = []
+    for i1 in range(len(groups[0])):
+        for i2 in range(i1 + 1, len(groups[0])):
+            a1, a2 = groups[0][i1], groups[0][i2]
+            for j1 in range(len(groups[1])):
+                for j2 in range(j1 + 1, len(groups[1])):
+                    b1, b2 = groups[1][j1], groups[1][j2]
+                    pts = [_intersect(lines[a1], lines[b1]), _intersect(lines[a1], lines[b2]),
+                           _intersect(lines[a2], lines[b2]), _intersect(lines[a2], lines[b1])]
+                    if any(p is None for p in pts):
+                        continue
+                    q = order_points(np.array(pts, np.float32))
+                    if np.linalg.norm(q[0] - q[1]) < min_sep or np.linalg.norm(q[1] - q[2]) < min_sep:
+                        continue
+                    if not cv2.isContourConvex(q.reshape(-1, 1, 2)) or not is_plausible(q, small.shape, cfg):
+                        continue
+                    sides = side_supports(q, dil, 30)
+                    if sides.min() < cfg.line_side_min:
+                        continue
+                    area = cv2.contourArea(q) / (h * w)
+                    scored.append((sides.mean() * area ** cfg.score_area_pow, q))
+    scored.sort(key=lambda x: -x[0])
+    return [q for _, q in scored[:keep]]
+
+
+# --------------------------------------------------------------------------- #
+# Уточнення сторін
+# --------------------------------------------------------------------------- #
+def refine_quad(q: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    """Уточнює 4-кутник: для кожної сторони бере точки країв у вузькій смузі вздовж неї,
+    проводить пряму методом найменших квадратів з робастною функцією Хубера (cv2.fitLine),
+    нові кути — перетини сусідніх прямих. Якщо точок замало або результат дивний — лишає як є.
+    """
+    q = order_points(q)
+    h, w = edges.shape[:2]
+    ys, xs = np.nonzero(edges)
+    if len(xs) < 20:
+        return q
+    pts = np.stack([xs, ys], 1).astype(np.float32)
+    band = max(3.0, 0.012 * np.hypot(h, w))
+    new_lines = []
+    for k in range(4):
+        p0, p1 = q[k], q[(k + 1) % 4]
+        d = p1 - p0
+        L = float(np.linalg.norm(d))
+        d = d / (L + 1e-9)
+        n = np.array([-d[1], d[0]])
+        rel = pts - p0
+        t = rel @ d / (L + 1e-9)
+        dist = np.abs(rel @ n)
+        sel = pts[(dist <= band) & (t > 0.1) & (t < 0.9)]
+        if len(sel) >= max(15, 0.3 * L):
+            vx, vy, x0, y0 = cv2.fitLine(sel, cv2.DIST_HUBER, 0, 0.01, 0.01).ravel()
+            new_lines.append(np.cross([x0, y0, 1.0], [x0 + vx, y0 + vy, 1.0]))
+        else:
+            new_lines.append(_line_through(np.array([*p0, *p1])))
+    corners = []
+    for k in range(4):
+        p = _intersect(new_lines[k - 1], new_lines[k])
+        if p is None:
+            return q
+        corners.append(p)
+    r = order_points(np.array(corners, np.float32))
+    if not cv2.isContourConvex(r.reshape(-1, 1, 2)) or np.abs(r - q).max() > 3 * band:
+        return q
+    return r
+
+
+def collect_candidates(small: np.ndarray, cfg: ScanConfig,
+                       eps_list: tuple[float, ...] | None = None) -> list[tuple[str, np.ndarray, np.ndarray]]:
+    """Усі кандидати: (джерело, 4-кутник, карта країв для оцінки опори)."""
+    maps = edge_maps(small, cfg)
+    candidates: list[tuple[str, np.ndarray, np.ndarray]] = []
+    for eps in eps_list or (cfg.approx_eps,):
+        c = cfg if eps == cfg.approx_eps else replace(cfg, approx_eps=eps)
+        for name, edges in maps.items():
+            for q in find_quads(edges, c):
+                candidates.append((name, q, edges))
+    if cfg.use_lines:
+        union = maps["bgr_low"] | maps["gray_low"]
+        for q in line_quads(small, cfg, union):
+            candidates.append(("lines", q, union))
+    return candidates
+
+
+def _inside_fraction(inner: np.ndarray, outer: np.ndarray) -> float:
+    """Яка частка площі inner лежить усередині outer."""
+    a = inner.reshape(-1, 1, 2).astype(np.float32)
+    b = outer.reshape(-1, 1, 2).astype(np.float32)
+    inter, _ = cv2.intersectConvexConvex(a, b)
+    return float(inter / max(cv2.contourArea(a), 1e-6))
 
 
 def find_document_multi(small: np.ndarray, cfg: ScanConfig
                         ) -> tuple[np.ndarray | None, str, list[np.ndarray], np.ndarray | None]:
     """Повертає (кути, метод, усі кандидати, карта країв переможця)."""
     lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
-    best, best_score, best_name, best_edges = None, -1.0, "none", None
-    all_quads: list[np.ndarray] = []
-    for name, edges in edge_maps(small, cfg).items():
-        for q in find_quads(edges, cfg):
-            all_quads.append(q)
-            sc = score_quad(small, lab, q, edges)
-            if sc > best_score:
-                best, best_score, best_name, best_edges = q, sc, name, edges
-    if best is None:
+    candidates = collect_candidates(small, cfg)
+    if cfg.filter_quads:
+        candidates = [c for c in candidates if is_plausible(c[1], small.shape, cfg)]
+    all_quads = [c[1] for c in candidates]
+    scores = [score_quad(small, lab, q, e, cfg, src == "lines") for src, q, e in candidates]
+    if not candidates or max(scores) <= 0:
         return None, "none", all_quads, None
-    return order_points(best), f"multi:{best_name}", all_quads, best_edges
+    best_i = int(np.argmax(scores))
+    if candidates[best_i][0] == "lines":
+        contour_i = [i for i, c in enumerate(candidates) if c[0] != "lines" and scores[i] > 0]
+        if contour_i:
+            ci = max(contour_i, key=lambda i: scores[i])
+            if _inside_fraction(candidates[best_i][1], candidates[ci][1]) >= cfg.line_inside_thr:
+                best_i = ci
+    name, best, edges = candidates[best_i]
+    best = order_points(best)
+    if cfg.refine:
+        best = refine_quad(best, edges)
+    return best, f"multi:{name}", all_quads, edges
 
 
 # --------------------------------------------------------------------------- #

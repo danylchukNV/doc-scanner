@@ -22,16 +22,36 @@ import csv
 import random
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from datasets import load_dataset  # noqa: E402
+from datasets import filter_split, load_dataset  # noqa: E402
 from scanner import ScanConfig, detect_corners, draw_corners, write_image  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def apply_overrides(cfg: ScanConfig, items: list[str]) -> ScanConfig:
+    """--set key=value: тип значення береться з поточного значення поля ScanConfig."""
+    for item in items:
+        key, _, raw = item.partition("=")
+        if not hasattr(cfg, key):
+            raise SystemExit(f"Невідомий параметр: {key}")
+        cur = getattr(cfg, key)
+        if isinstance(cur, bool):
+            val = raw.lower() in ("1", "true", "yes", "on")
+        elif isinstance(cur, int) and cur is not None:
+            val = int(raw)
+        elif isinstance(cur, float):
+            val = float(raw)
+        else:
+            val = None if raw.lower() == "none" else raw
+        cfg = replace(cfg, **{key: val})
+    return cfg
 
 
 # --------------------------------------------------------------------------- #
@@ -57,6 +77,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Оцінка точності сканера на датасеті")
     p.add_argument("folder", nargs="?", default=str(ROOT / "samples" / "synthetic"))
     p.add_argument("--format", default="auto", choices=["auto", "gt", "mendeley", "smartdoc"])
+    p.add_argument("--split", choices=["all", "tune", "test"], default="all",
+                   help="частина датасету: tune — для налаштування, test — для чесної оцінки")
     p.add_argument("--limit", type=int, default=0, help="випадкова вибірка N зображень")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--frame-step", type=int, default=30, help="SmartDoc: брати кожен N-й кадр")
@@ -64,6 +86,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--worst", type=int, default=10, help="скільки найгірших випадків показати")
     p.add_argument("--save-worst", action="store_true",
                    help="зберегти картинки найгірших випадків (зелений — еталон, червоний — знайдене)")
+    p.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                   help="змінити будь-який параметр ScanConfig, напр. --set refine=true line_weight=0.7")
+    p.add_argument("--parts", type=int, default=0, help="поділити вибірку на N частин")
+    p.add_argument("--part", type=int, default=None, help="обробити лише частину з цим номером")
     p.add_argument("-o", "--out", default=None, help="CSV-звіт (за замовч. output/eval_<папка>.csv)")
     # параметри алгоритму — ті самі, що в main.py, щоб порівнювати налаштування
     p.add_argument("--strategy", choices=["multi", "simple"], default="multi")
@@ -86,12 +112,16 @@ def main() -> int:
                      canny_high=a.canny[1] if a.canny else None, canny_sigma=a.sigma,
                      morph_ksize=a.morph, approx_eps=a.eps, min_area_ratio=a.min_area,
                      strategy=a.strategy)
+    cfg = apply_overrides(cfg, a.set)
 
     fmt, samples = load_dataset(folder, a.format, a.frame_step)
+    samples = filter_split(samples, a.split)
     total = len(samples)
     if a.limit and a.limit < total:
         samples = random.Random(a.seed).sample(samples, a.limit)
-    print(f"Датасет: {folder} (формат {fmt}), зображень: {len(samples)} з {total}\n")
+    if a.part is not None:
+        samples = samples[a.part::a.parts]
+    print(f"Датасет: {folder} (формат {fmt}, частина {a.split}), зображень: {len(samples)} з {total}\n")
 
     rows = []
     for i, s in enumerate(samples, 1):

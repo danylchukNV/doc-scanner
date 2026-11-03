@@ -23,7 +23,8 @@
 | `src/check_env.py` | перевірка залежностей і тестових даних |
 | `src/make_synthetic.py` | генерація синтетичних тестів з відомими кутами |
 | `src/evaluate.py` | оцінка точності: IoU, похибка кутів, час; звіт CSV і найгірші випадки |
-| `src/datasets.py` | завантажувачі розмітки: ground_truth.json, Mendeley (csv), SmartDoc (avi + gt.xml) |
+| `src/datasets.py` | завантажувачі розмітки: ground_truth.json, Mendeley (csv), SmartDoc (avi + gt.xml); поділ tune/test |
+| `src/tune.py` | підбір параметрів перебором сітки на частині tune |
 | `src/extract_parquet.py` | витягування jpg + розмітки з parquet (DocCornerDataset) |
 
 Детальний аналіз і обґрунтування вибору методів — [docs/01_analysis.md](docs/01_analysis.md).
@@ -86,10 +87,12 @@ python src/evaluate.py datasets/doccorner_sample
 
 Результати на датасетах SmartDoc 2015 і Mendeley, аналіз помилок і обмеження — [docs/03_testing.md](docs/03_testing.md).
 
-| Датасет | Успіх (IoU ≥ 0.9), `simple` → `multi` |
-|---------|------------------------|
-| SmartDoc 2015, 300 кадрів | 12.7 % → **85.0 %** |
-| Mendeley, 200 фото | 14.0 % → **39.5 %** |
+Підсумок на частині **test** (не використовувалась для налаштування), успіх — IoU ≥ 0.9:
+
+| Датасет | `simple` | `multi` v1 | **`multi` v2** |
+|---------|----------|------------|----------------|
+| SmartDoc 2015, 341 кадр | 20.2 % | 78.9 % | **86.8 %** |
+| Mendeley, 300 фото | 13.0 % | 35.0 % | **42.7 %** |
 
 Власні тестові фото:
 

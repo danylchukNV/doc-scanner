@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import csv
 import json
+import re
+import zlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,3 +113,28 @@ def load_dataset(folder: Path, fmt: str = "auto", frame_step: int = 30) -> tuple
     if fmt == "smartdoc":
         return fmt, load_smartdoc(folder, frame_step)
     raise ValueError(f"Невідомий формат: {fmt}")
+
+
+# --------------------------------------------------------------------------- #
+# Поділ на tune / test
+# --------------------------------------------------------------------------- #
+TUNE_FRACTION = 0.3
+
+
+def split_of(name: str) -> str:
+    """Детермінований поділ: однаковий на будь-якому комп'ютері й при будь-якому порядку файлів.
+
+    SmartDoc: за документом — документи 001 і 002 кожного типу -> tune, 003–005 -> test
+              (кадри одного відео дуже схожі, тому їх не можна розносити в різні частини).
+    Інші:     за хешем CRC32 назви файлу — ~30 % у tune.
+    """
+    m = re.search(r"([a-z]+)(\d{3})#", name)
+    if m:
+        return "tune" if int(m.group(2)) <= 2 else "test"
+    return "tune" if zlib.crc32(name.encode("utf-8")) % 100 < TUNE_FRACTION * 100 else "test"
+
+
+def filter_split(samples: list[Sample], split: str) -> list[Sample]:
+    if split == "all":
+        return samples
+    return [s for s in samples if split_of(s.name) == split]

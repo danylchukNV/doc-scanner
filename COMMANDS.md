@@ -132,3 +132,38 @@ python src/evaluate.py datasets/doccorner_sample --iou 0.8
 ```
 
 Звіт по кожному зображенню: `output/eval_<назва_папки>.csv` (IoU, похибка кутів, метод, час).
+
+### Поділ tune / test і підбір параметрів
+
+```bash
+# оцінка лише на test (чесні цифри) або на tune
+python src/evaluate.py "docs/datasets/All My Dataset" --split test --limit 300
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --split test --frame-step 50
+
+# змінити будь-який параметр алгоритму (і в evaluate.py, і в main.py)
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --split test --set use_lines=false
+python src/main.py samples/02_a4_dark_angle.jpg --show --set refine=true min_angle=40
+
+# підбір параметрів на tune (результат -> docs/tuning_results.json)
+python src/tune.py "docs/datasets/All My Dataset" docs/datasets/SmartDoc/testDataset --frame-step 50
+
+# те саме частинами (наприклад, на слабкому ПК): підготовка шматками, потім перебір
+python src/tune.py "docs/datasets/All My Dataset" docs/datasets/SmartDoc/testDataset --parts 8 --part 0
+python src/tune.py "docs/datasets/All My Dataset" docs/datasets/SmartDoc/testDataset --parts 8 --search
+
+# довга обробка частинами (кожна частина — окремий CSV)
+python src/evaluate.py "docs/datasets/All My Dataset" --split test --limit 300 --parts 4 --part 0 -o output/m_0.csv
+```
+
+Основні параметри стратегії multi (`--set ключ=значення`):
+
+| Параметр | За замовч. | Зміст |
+|----------|-----------|-------|
+| `use_lines` | true | кандидати з прямих (LSD) |
+| `line_weight` | 0.5 | множник оцінки кандидатів з прямих |
+| `line_side_min` | 0.7 | мін. опора на краї для кожної сторони 4-кутника з прямих |
+| `line_inside_thr` | 0.9 | прямі всередині кращого контура -> обрати контур |
+| `filter_quads` | true | фільтр правдоподібності |
+| `min_angle` | 50 | мін. внутрішній кут, градуси |
+| `score_area_pow` | 0.5 | вага площі в оцінці |
+| `refine` | false | уточнення сторін через fitLine |
