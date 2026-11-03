@@ -81,7 +81,7 @@ python src/main.py samples/08_low_light.jpg --morph 0 --show
 
 ```bash
 python src/make_synthetic.py          # згенерувати samples/synthetic/ + ground_truth.json
-python src/evaluate.py                # похибка кутів на синтетиці
+python src/evaluate.py                # IoU / похибка кутів на синтетиці
 python src/main.py samples/synthetic --debug
 ```
 
@@ -102,3 +102,28 @@ python src/evaluate.py datasets/doccorner_sample
 # обробити вибірку з картинками етапів
 python src/main.py datasets/doccorner_sample --debug -o output/doccorner
 ```
+
+### Оцінка точності (evaluate.py)
+
+Формат датасету визначається автоматично: `ground_truth.json` → gt, `*.gt.xml` → SmartDoc, `*.csv` → Mendeley.
+
+```bash
+# Mendeley ("All My Dataset"): 200 випадкових фото
+python src/evaluate.py "docs/datasets/All My Dataset" --limit 200
+
+# SmartDoc: кожен 50-й кадр усіх відео, випадкові 300
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --frame-step 50 --limit 300
+
+# показати 15 найгірших і зберегти їх картинки в output/eval_worst
+#   (зелений — еталон, червоний — знайдене сканером)
+python src/evaluate.py "docs/datasets/All My Dataset" --limit 200 --worst 15 --save-worst
+
+# порівняти параметри алгоритму
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --limit 300 --sigma 0.5
+python src/evaluate.py docs/datasets/SmartDoc/testDataset --limit 300 --canny 20 60 --morph 7
+
+# інший поріг успіху (за замовч. IoU ≥ 0.9)
+python src/evaluate.py datasets/doccorner_sample --iou 0.8
+```
+
+Звіт по кожному зображенню: `output/eval_<назва_папки>.csv` (IoU, похибка кутів, метод, час).

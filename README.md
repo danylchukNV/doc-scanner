@@ -22,7 +22,8 @@
 | `src/main.py` | CLI, режим debug, збереження |
 | `src/check_env.py` | перевірка залежностей і тестових даних |
 | `src/make_synthetic.py` | генерація синтетичних тестів з відомими кутами |
-| `src/evaluate.py` | вимірювання похибки кутів (синтетика або будь-яка папка з `ground_truth.json`) |
+| `src/evaluate.py` | оцінка точності: IoU, похибка кутів, час; звіт CSV і найгірші випадки |
+| `src/datasets.py` | завантажувачі розмітки: ground_truth.json, Mendeley (csv), SmartDoc (avi + gt.xml) |
 | `src/extract_parquet.py` | витягування jpg + розмітки з parquet (DocCornerDataset) |
 
 Детальний аналіз і обґрунтування вибору методів — [docs/01_analysis.md](docs/01_analysis.md).

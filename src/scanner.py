@@ -111,14 +111,17 @@ def detect_edges(gray: np.ndarray, cfg: ScanConfig) -> tuple[np.ndarray, tuple[i
 def order_points(pts: np.ndarray) -> np.ndarray:
     """Впорядковує 4 точки як TL, TR, BR, BL.
 
-    TL має найменшу суму x+y, BR — найбільшу;
-    TR має найменшу різницю y-x, BL — найбільшу.
+    Точки сортуються за кутом навколо центру мас (за годинниковою стрілкою
+    в координатах зображення), потім першою стає точка з найменшою x+y.
+    Класичний варіант «мін/макс суми та різниці» дає дублікати, коли аркуш
+    повернутий рівно на 45°, — цей підхід такої проблеми не має.
     """
     pts = np.asarray(pts, dtype=np.float32).reshape(4, 2)
-    s = pts.sum(axis=1)
-    d = np.diff(pts, axis=1).ravel()
-    return np.array([pts[np.argmin(s)], pts[np.argmin(d)],
-                     pts[np.argmax(s)], pts[np.argmax(d)]], dtype=np.float32)
+    c = pts.mean(axis=0)
+    angles = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0])
+    pts = pts[np.argsort(angles)]          # -π..π: у системі з віссю y вниз — за годинниковою
+    start = int(np.argmin(pts.sum(axis=1)))
+    return np.roll(pts, -start, axis=0)
 
 
 def find_document_corners(edges: np.ndarray, cfg: ScanConfig) -> tuple[np.ndarray | None, str]:
@@ -203,6 +206,15 @@ def draw_corners(img: np.ndarray, corners: np.ndarray, color=(0, 255, 0)) -> np.
         cv2.circle(vis, (x, y), t * 3, (0, 0, 255), -1)
         cv2.putText(vis, name, (x + 6, y - 6), cv2.FONT_HERSHEY_SIMPLEX, t * 0.3, (0, 0, 255), t)
     return vis
+
+
+def detect_corners(img: np.ndarray, cfg: ScanConfig | None = None) -> tuple[np.ndarray | None, str]:
+    """Лише пошук кутів (етапи 1–3), без корекції перспективи. Використовується для оцінки."""
+    cfg = cfg or ScanConfig()
+    _, blurred, ratio = preprocess(img, cfg)
+    edges, _ = detect_edges(blurred, cfg)
+    small_corners, method = find_document_corners(edges, cfg)
+    return (None if small_corners is None else small_corners * ratio), method
 
 
 def scan(img: np.ndarray, cfg: ScanConfig | None = None,
