@@ -33,6 +33,8 @@ _Заповнюється на етапі 4._
 
 ## Встановлення та запуск
 
+> Повний список команд — [COMMANDS.md](COMMANDS.md).
+
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate
@@ -108,6 +110,7 @@ doc-scanner/
 ├── samples/        тестові фото
 ├── output/         результати (не комітяться)
 ├── docs/           аналіз, чек-лист фото
+├── COMMANDS.md     шпаргалка команд
 ├── requirements.txt
 └── README.md
 ```
