@@ -1,2 +1,5 @@
 opencv-python>=4.8,<6
 numpy>=1.24
+
+# для src/extract_parquet.py (DocCornerDataset)
+pyarrow>=14

@@ -3,10 +3,16 @@
 Метрика: середня відстань (px) між знайденими та справжніми кутами.
 Кути поза кадром (випадок cut_off) не можуть бути знайдені — це очікувана невдача.
 
-Запуск:  python src/evaluate.py
+Запуск:
+    python src/evaluate.py                                # синтетичні тести
+    python src/evaluate.py datasets/doccorner_sample      # будь-яка папка з ground_truth.json
+
+Записи з null у ground_truth.json — зображення без документа: успіх, якщо сканер
+нічого не знайшов (перевірка хибних спрацьовувань).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -22,9 +28,12 @@ TOL_PX = 15  # допуск, щоб вважати результат успіш
 
 
 def main() -> int:
-    gt_path = SYN / "ground_truth.json"
+    ap = argparse.ArgumentParser(description="Оцінка точності пошуку кутів")
+    ap.add_argument("folder", nargs="?", default=str(SYN), help="папка із зображеннями та ground_truth.json")
+    folder = Path(ap.parse_args().folder)
+    gt_path = folder / "ground_truth.json"
     if not gt_path.exists():
-        print("Спершу запустіть: python src/make_synthetic.py")
+        print(f"Немає {gt_path}. Для синтетики: python src/make_synthetic.py")
         return 2
     gt = json.loads(gt_path.read_text(encoding="utf-8"))
     cfg = ScanConfig()
@@ -33,7 +42,12 @@ def main() -> int:
     print("-" * 68)
     passed = 0
     for name, corners in gt.items():
-        res = scan(read_image(SYN / name), cfg)
+        res = scan(read_image(folder / name), cfg)
+        if corners is None:  # негативний приклад
+            good = not res.ok
+            passed += good
+            print(f"{name:<28}{res.method:<15}{'—':>12}  {'вірно: документа немає' if good else 'ХИБНЕ СПРАЦЮВАННЯ'}")
+            continue
         if not res.ok:
             print(f"{name:<28}{res.method:<15}{'—':>12}  НЕ ЗНАЙДЕНО")
             continue

@@ -22,7 +22,8 @@
 | `src/main.py` | CLI, режим debug, збереження |
 | `src/check_env.py` | перевірка залежностей і тестових даних |
 | `src/make_synthetic.py` | генерація синтетичних тестів з відомими кутами |
-| `src/evaluate.py` | вимірювання похибки кутів на синтетичних тестах |
+| `src/evaluate.py` | вимірювання похибки кутів (синтетика або будь-яка папка з `ground_truth.json`) |
+| `src/extract_parquet.py` | витягування jpg + розмітки з parquet (DocCornerDataset) |
 
 Детальний аналіз і обґрунтування вибору методів — [docs/01_analysis.md](docs/01_analysis.md).
 
@@ -66,6 +67,17 @@ python src/main.py samples/07_shadow.jpg --canny 30 90 --block 31 --C 15
 python src/make_synthetic.py   # створює samples/synthetic/ + ground_truth.json
 python src/evaluate.py         # похибка знайдених кутів у пікселях
 ```
+
+### Зовнішній датасет (DocCornerDataset, parquet)
+
+```bash
+pip install pyarrow
+# 300 випадкових зображень з документами -> datasets/doccorner_sample/ + ground_truth.json
+python src/extract_parquet.py docs/datasets/DocCornerDataset/test --limit 300
+python src/evaluate.py datasets/doccorner_sample
+```
+
+Датасети не зберігаються в репозиторії (див. `.gitignore`).
 
 ## Тестування
 

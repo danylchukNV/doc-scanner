@@ -6,3 +6,7 @@ venv/
 .vscode/
 output/*
 !output/.gitkeep
+
+# великі датасети — не комітимо
+datasets/
+docs/datasets/
