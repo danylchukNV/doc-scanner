@@ -220,11 +220,11 @@ def tab_scan(cfg: ScanConfig) -> None:
     left, right = st.columns(2)
     with left:
         st.subheader("Знайдений документ")
-        st.image(to_rgb(res.stages.get("4_contour", img)), use_container_width=True)
+        st.image(to_rgb(res.stages.get("4_contour", img)), width="stretch")
     with right:
         st.subheader("Скан")
         if res.ok:
-            st.image(to_rgb(res.output), use_container_width=True)
+            st.image(to_rgb(res.output), width="stretch")
             st.download_button("⬇️ Завантажити скан (PNG)", encode_png(res.output),
                                file_name=f"{Path(name).stem}_scan.png", mime="image/png")
         else:
@@ -235,7 +235,7 @@ def tab_scan(cfg: ScanConfig) -> None:
     for row in range(0, len(stages), 3):
         cols = st.columns(3)
         for col, (k, v) in zip(cols, stages[row:row + 3]):
-            col.image(to_rgb(v), caption=STAGE_TITLES.get(k, k), use_container_width=True)
+            col.image(to_rgb(v), caption=STAGE_TITLES.get(k, k), width="stretch")
 
 
 # --------------------------------------------------------------------------- #
@@ -257,9 +257,9 @@ def tab_compare(cfg: ScanConfig) -> None:
         with col:
             st.subheader(strategy)
             st.caption(f"{res.method} · {ms:.0f} мс")
-            st.image(to_rgb(res.stages.get("4_contour", img)), use_container_width=True)
+            st.image(to_rgb(res.stages.get("4_contour", img)), width="stretch")
             if res.ok:
-                st.image(to_rgb(res.output), use_container_width=True)
+                st.image(to_rgb(res.output), width="stretch")
             else:
                 st.warning("Документ не знайдено")
 
@@ -329,7 +329,7 @@ def tab_dataset(cfg: ScanConfig) -> None:
             vis = draw_corners(vis, pred, (0, 0, 255))
         mark = "✅" if iou >= 0.9 else ("⚠️" if iou >= 0.5 else "❌")
         with cols[i % 3]:
-            st.image(to_rgb(limit_size(vis, 900)), use_container_width=True,
+            st.image(to_rgb(limit_size(vis, 900)), width="stretch",
                      caption=f"{mark} IoU {iou:.2f} · {method} · {s.name}")
     st.metric("Успіх на цих прикладах", f"{sum(i >= 0.9 for i in ious)}/{len(ious)}",
               help="Повна оцінка на всьому датасеті: python src/evaluate.py ...")

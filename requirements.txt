@@ -5,4 +5,4 @@ numpy>=1.24
 pyarrow>=14
 
 # веб-демонстрація (app.py)
-streamlit>=1.30
+streamlit>=1.45
