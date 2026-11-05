@@ -1,9 +1,9 @@
 """CLI сканера документів.
 
 Приклади:
-    python src/main.py samples/01_a4_dark_top.jpg
-    python src/main.py samples/02_a4_dark_angle.jpg --mode color --show
-    python src/main.py samples/09_white_on_white.jpg --manual
+    python src/main.py samples/examples/02_card_angle.jpg
+    python src/main.py samples/examples/04_color_flyer.jpg --mode color --show
+    python src/main.py samples/examples/10_white_on_white.jpg --manual
     python src/main.py samples/ --debug            # пакетна обробка всієї папки
 """
 from __future__ import annotations

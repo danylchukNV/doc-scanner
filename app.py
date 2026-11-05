@@ -88,7 +88,7 @@ def orientation_ui(img: np.ndarray, key: str) -> tuple[np.ndarray, str]:
 
 def example_files() -> list[Path]:
     out = []
-    for folder in (ROOT / "samples", ROOT / "samples" / "synthetic"):
+    for folder in (ROOT / "samples" / "examples", ROOT / "samples", ROOT / "samples" / "synthetic"):
         if folder.exists():
             out += sorted(p for p in folder.iterdir() if p.suffix.lower() in IMG_EXTS)
     return out
@@ -287,6 +287,7 @@ def tab_dataset(cfg: ScanConfig) -> None:
         "Mendeley (All My Dataset)": ROOT / "docs" / "datasets" / "All My Dataset",
         "SmartDoc 2015": ROOT / "docs" / "datasets" / "SmartDoc" / "testDataset",
         "DocCorner (витягнутий)": ROOT / "datasets" / "doccorner_sample",
+        "Приклади з README": ROOT / "samples" / "examples",
         "Синтетика": ROOT / "samples" / "synthetic",
     }
     available = {k: v for k, v in defaults.items() if v.exists()}

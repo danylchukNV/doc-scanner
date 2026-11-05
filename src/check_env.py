@@ -18,8 +18,8 @@ def main() -> int:
     print(f"OpenCV : {cv2.__version__}")
     print(f"NumPy  : {np.__version__}")
 
-    files = sorted(p for p in SAMPLES.iterdir() if p.suffix.lower() in EXTS)
-    print(f"\nТестових зображень у samples/: {len(files)}")
+    files = sorted(p for p in SAMPLES.rglob("*") if p.suffix.lower() in EXTS)
+    print(f"\nТестових зображень у samples/ (з підпапками): {len(files)}")
     bad = 0
     for p in files:
         # imdecode замість imread — коректно читає шляхи з кирилицею у Windows
@@ -32,7 +32,7 @@ def main() -> int:
             print(f"  [ok] {p.name}: {w}x{h}")
 
     if len(files) < 5:
-        print("\nПотрібно щонайменше 5 зображень (див. docs/test_photos_checklist.md)")
+        print("\nПотрібно щонайменше 5 зображень (samples/examples/ або python src/make_synthetic.py)")
         return 1
     return 1 if bad else 0
 

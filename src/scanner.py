@@ -399,6 +399,7 @@ def line_quads(small: np.ndarray, cfg: ScanConfig, support_edges: np.ndarray,
     ang = np.arctan2(segs[:, 3] - segs[:, 1], segs[:, 2] - segs[:, 0])
     feats = np.stack([np.cos(2 * ang), np.sin(2 * ang)], 1).astype(np.float32)
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1e-3)
+    cv2.setRNGSeed(0)  # k-means++ випадково обирає початкові центри — фіксуємо, щоб результат повторювався
     _, labels, _ = cv2.kmeans(feats, 2, None, crit, 3, cv2.KMEANS_PP_CENTERS)
     labels = labels.ravel()
     length = np.hypot(segs[:, 2] - segs[:, 0], segs[:, 3] - segs[:, 1])

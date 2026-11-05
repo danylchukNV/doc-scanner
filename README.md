@@ -138,19 +138,19 @@ streamlit run app.py
 
 ```bash
 # одне фото -> output/<назва>_scan.png
-python src/main.py samples/01_a4_dark_top.jpg
+python src/main.py samples/examples/02_card_angle.jpg
 
 # кольоровий режим (CLAHE) і показ усіх етапів у вікні
-python src/main.py samples/02_a4_dark_angle.jpg --mode color --show
+python src/main.py samples/examples/04_color_flyer.jpg --mode color --show
 
 # ручний вибір 4 кутів мишкою (коли автоматичний пошук не впорався)
-python src/main.py samples/09_white_on_white.jpg --manual
+python src/main.py samples/examples/10_white_on_white.jpg --manual
 
 # пакетна обробка папки + зображення етапів у output/debug + output/report.csv
 python src/main.py samples/ --debug
 
 # зміна параметрів алгоритму
-python src/main.py samples/07_shadow.jpg --canny 30 90 --block 31 --C 15
+python src/main.py samples/examples/05_shadow_synthetic.jpg --canny 30 90 --block 31 --C 15
 ```
 
 Усі параметри: `python src/main.py -h`.
@@ -184,35 +184,74 @@ python src/evaluate.py datasets/doccorner_sample
 | SmartDoc 2015, 341 кадр | 20.2 % | 78.9 % | **86.8 %** |
 | Mendeley, 300 фото | 13.0 % | 35.0 % | **42.7 %** |
 
-Власні тестові фото:
+### Тестові приклади
 
-| № | Файл | Умови | Результат | Примітка |
-|---|------|-------|-----------|----------|
-| 1 | 01_a4_dark_top.jpg | A4, темний стіл, зверху | | |
-| 2 | 02_a4_dark_angle.jpg | під кутом | | |
-| 3 | 03_a4_rotated.jpg | поворот 45° | | |
-| 4 | 04_receipt.jpg | чек | | |
-| 5 | 05_card.jpg | візитка | | |
-| 6 | 06_book_page.jpg | кольоровий | | |
-| 7 | 07_shadow.jpg | тінь | | |
-| 8 | 08_low_light.jpg | слабке світло | | |
-| 9 | 09_white_on_white.jpg | білий на білому | | |
-| 10 | 10_folded_corner.jpg | загнутий кут | | |
-| 11 | 11_cut_off.jpg | кут поза кадром | | |
-| 12 | 12_cluttered.jpg | захаращений фон | | |
+10 показових зображень з датасетів (Mendeley, SmartDoc 2015) і синтетики лежать у
+`samples/examples/` разом з еталонними кутами (`ground_truth.json`), тому результат
+можна відтворити однією командою:
+
+```bash
+python src/evaluate.py samples/examples          # IoU для кожного прикладу
+python src/main.py samples/examples --debug      # скани + картинки всіх етапів
+```
+
+Зліва — фото: **зелений** контур — еталон, **червоний** — знайдене сканером; справа — результат.
+
+| № | Приклад | Умови | Джерело переможця | IoU | Результат |
+|---|---------|-------|-------------------|-----|-----------|
+| 1 | `01_low_contrast_table` | білий аркуш на світлому столі, аркуш займає ~10 % кадру | `gray_low` (Canny з низьким порогом) | 0.977 | ✅ |
+| 2 | `02_card_angle` | візитка під кутом, сильна перспектива, темний стіл | `gray_auto` | 0.988 | ✅ |
+| 3 | `03_in_hand` | буклет у руці, пальці перекривають нижній край | `otsu_sat_inv` (Otsu за насиченістю) | 0.975 | ✅ |
+| 4 | `04_color_flyer` | кольорова листівка на дерев'яному столі, сторонні предмети | `gray_auto` | 0.976 | ✅ |
+| 5 | `05_shadow_synthetic` | тінь на половині аркуша (синтетика) | `otsu_sat` | 0.991 | ✅ тінь прибрана бінаризацією |
+| 6 | `06_fills_frame` | документ займає майже весь кадр і торкається його меж | `lines` (прямі LSD) | 0.944 | ✅ контур не замкнений — допомогли прямі |
+| 7 | `07_book_cover` | обкладинка книжки на білому столі, корінець видно збоку | `lines` | 0.866 | ⚠️ частково: захоплено корінець |
+| 8 | `08_patterned_cloth` | чек на скатертині з великим візерунком | `gray_low` | 0.219 | ❌ візерунок дає сильніші краї, ніж аркуш |
+| 9 | `09_cable_over_sheet` | захаращений стіл: кабель і маркер поверх аркуша, поруч журнал | `lines` | 0.000 | ❌ обрано журнал замість аркуша |
+| 10 | `10_white_on_white` | білий аркуш на білій стіні, розмите фото | — | 0.000 | ❌ документ не знайдено (допомагає ручний режим) |
+
+Успіх (IoU ≥ 0.9): 6 з 10; медіана IoU 0.96.
+
+<details>
+<summary>Картинки результатів (натисніть, щоб розгорнути)</summary>
+
+| | |
+|---|---|
+| 1. ![](docs/img/examples/01_low_contrast_table.jpg) | 2. ![](docs/img/examples/02_card_angle.jpg) |
+| 3. ![](docs/img/examples/03_in_hand.jpg) | 4. ![](docs/img/examples/04_color_flyer.jpg) |
+| 5. ![](docs/img/examples/05_shadow_synthetic.jpg) | 6. ![](docs/img/examples/06_fills_frame.jpg) |
+| 7. ![](docs/img/examples/07_book_cover.jpg) | 8. ![](docs/img/examples/08_patterned_cloth.jpg) |
+| 9. ![](docs/img/examples/09_cable_over_sheet.jpg) | 10. ![](docs/img/examples/10_white_on_white.jpg) |
+
+</details>
+
+Джерела зображень: Mendeley «A New Image Dataset for Document Corner Localization»
+(приклади 2, 3, 4, 6, 7, 8, 10), SmartDoc 2015 Challenge 1 (1, 9), синтетика `make_synthetic.py` (5).
+Зображення зменшено до 1280 px.
 
 ## Відомі обмеження
 
-_Заповнюється за результатами тестування._
+1. **Документ має бути пласким опуклим чотирикутником.** Зігнуті й зім'яті аркуші описуються
+   лише наближено (IoU 0.8–0.9).
+2. **Предмети поверх межі аркуша** (кабель, рука, ручка) розривають контур (приклад 9;
+   фон 05 SmartDoc — 0 %).
+3. **Кілька схожих об'єктів у кадрі** — обирається найконтрастніший, не обов'язково потрібний (приклад 9).
+4. **Текстурний фон** з сильними краями (візерунок, плитка) — приклад 8.
+5. **Дуже низький контраст** (білий на білому, розмиття) — приклад 10; рятує ручний вибір кутів
+   (`--manual` або повзунки у веб-демонстрації).
+6. **Кути поза кадром** знайти неможливо — частину документа буде обрізано.
+7. **Швидкість:** стратегія `multi` — ~0.15–0.35 с на фото; для відео в реальному часі краще `simple`.
+
+Детальний аналіз помилок — [docs/03_testing.md](docs/03_testing.md).
 
 ## Структура репозиторію
 
 ```
 doc-scanner/
 ├── src/            код
-├── samples/        тестові фото
+├── samples/        examples/ — 10 прикладів з розміткою, synthetic/ — синтетика
 ├── output/         результати (не комітяться)
-├── docs/           аналіз, чек-лист фото
+├── docs/           аналіз, звіт тестування, ілюстрації
 ├── COMMANDS.md     шпаргалка команд
 ├── requirements.txt
 └── README.md

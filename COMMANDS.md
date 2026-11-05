@@ -44,19 +44,19 @@ streamlit run app.py          # відкриється в браузері: http
 
 ```bash
 # одне фото -> output/<назва>_scan.png
-python src/main.py samples/01_a4_dark_top.jpg
+python src/main.py samples/examples/02_card_angle.jpg
 
 # кольоровий режим (CLAHE) замість ч/б
-python src/main.py samples/02_a4_dark_angle.jpg --mode color
+python src/main.py samples/examples/04_color_flyer.jpg --mode color
 
 # без підсилення, лише вирівнювання
-python src/main.py samples/02_a4_dark_angle.jpg --mode none
+python src/main.py samples/examples/04_color_flyer.jpg --mode none
 
 # показати всі етапи у вікні
-python src/main.py samples/02_a4_dark_angle.jpg --show
+python src/main.py samples/examples/04_color_flyer.jpg --show
 
 # ручний вибір 4 кутів мишкою (Enter — ок, R — скинути, Esc — скасувати)
-python src/main.py samples/09_white_on_white.jpg --manual
+python src/main.py samples/examples/10_white_on_white.jpg --manual
 
 # пакетна обробка папки + картинки етапів (output/debug) + звіт output/report.csv
 python src/main.py samples/ --debug
@@ -83,9 +83,9 @@ python src/main.py -h
 | `--C` | 10 | константа adaptiveThreshold |
 
 ```bash
-python src/main.py samples/07_shadow.jpg --canny 30 90 --show
-python src/main.py samples/07_shadow.jpg --block 31 --C 15
-python src/main.py samples/08_low_light.jpg --morph 0 --show
+python src/main.py samples/examples/05_shadow_synthetic.jpg --canny 30 90 --show
+python src/main.py samples/examples/05_shadow_synthetic.jpg --block 31 --C 15
+python src/main.py samples/examples/01_low_contrast_table.jpg --morph 0 --show
 ```
 
 ## 4. Синтетичні тести
@@ -152,7 +152,7 @@ python src/evaluate.py docs/datasets/SmartDoc/testDataset --split test --frame-s
 
 # змінити будь-який параметр алгоритму (і в evaluate.py, і в main.py)
 python src/evaluate.py docs/datasets/SmartDoc/testDataset --split test --set use_lines=false
-python src/main.py samples/02_a4_dark_angle.jpg --show --set refine=true min_angle=40
+python src/main.py samples/examples/04_color_flyer.jpg --show --set refine=true min_angle=40
 
 # підбір параметрів на tune (результат -> docs/tuning_results.json)
 python src/tune.py "docs/datasets/All My Dataset" docs/datasets/SmartDoc/testDataset --frame-step 50
