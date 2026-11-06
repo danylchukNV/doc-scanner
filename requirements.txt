@@ -6,3 +6,6 @@ pyarrow>=14
 
 # веб-демонстрація (app.py)
 streamlit>=1.45
+
+# ілюстрації для README (src/make_figures.py)
+matplotlib>=3.7

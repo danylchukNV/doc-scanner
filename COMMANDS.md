@@ -177,3 +177,9 @@ python src/evaluate.py "docs/datasets/All My Dataset" --split test --limit 300 -
 | `min_angle` | 50 | мін. внутрішній кут, градуси |
 | `score_area_pow` | 0.5 | вага площі в оцінці |
 | `refine` | false | уточнення сторін через fitLine |
+
+### Ілюстрації для README
+
+```bash
+python src/make_figures.py      # перегенерувати docs/img/readme/*
+```
